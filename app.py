@@ -35,9 +35,8 @@ class HFInferenceLLM(LLM):
             self,
             "client",
             InferenceClient(
-                model=model_id, 
-                token=token,
-                base_url="https://router.huggingface.co/hf-inference"
+                model=model_id,  # ✅ only pass model and token
+                token=token
             )
         )
 
@@ -52,7 +51,7 @@ class HFInferenceLLM(LLM):
                 max_tokens=512
             )
 
-            # Handle different response formats
+            # Handle response variations
             if hasattr(response, "generated_text"):
                 return response.generated_text
             if isinstance(response, dict):
@@ -78,9 +77,7 @@ class HFInferenceLLM(LLM):
         return "huggingface_inference"
 
 
-# ================================
-# 📂 File Upload Section
-# ================================
+# File Upload Section
 uploaded_files = st.file_uploader(
     "📂 Upload one or more files",
     type=["pdf", "txt"],
@@ -116,9 +113,7 @@ if uploaded_files:
         st.warning("⚠️ Mistral model unavailable, switching to Zephyr fallback.")
         llm = HFInferenceLLM("HuggingFaceH4/zephyr-7b-beta", HF_TOKEN)
 
-    # ================================
-    # 💬 Chat Section
-    # ================================
+    # Chat Section
     st.subheader("💬 Chat with your documents")
 
     if "chat_history" not in st.session_state:
