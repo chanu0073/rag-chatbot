@@ -31,7 +31,6 @@ class HFInferenceLLM(LLM):
             self,
             "client",
             InferenceClient(
-                model=model_id,
                 token=token,
                 base_url="https://router.huggingface.co/hf-inference"
             )
@@ -42,6 +41,7 @@ class HFInferenceLLM(LLM):
         try:
             messages = [{"role": "user", "content": prompt}]
             response = self.client.chat_completion(
+                model=self.model_id,  
                 messages=messages,
                 temperature=0.5,
                 max_tokens=512
