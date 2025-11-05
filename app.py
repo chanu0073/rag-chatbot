@@ -27,14 +27,15 @@ class HFInferenceLLM(LLM):
 
     def __init__(self, model_id: str, token: str):
         super().__init__(model_id=model_id, token=token)
-        # Use the new router endpoint (as required since Oct 2024)
-    object.__setattr__(self,"client",InferenceClient(
-            model=model_id,
-            token=token,
-            base_url="https://router.huggingface.co/hf-inference"
+        object.__setattr__(
+            self,
+            "client",
+            InferenceClient(
+                model=model_id,
+                token=token,
+                base_url="https://router.huggingface.co/hf-inference"
+            )
         )
-    )
-
 
     def _call(self, prompt: str, stop=None, run_manager=None, **kwargs) -> str:
         """Use chat_completion for models that support conversational tasks."""
@@ -43,10 +44,9 @@ class HFInferenceLLM(LLM):
             response = self.client.chat_completion(
                 messages=messages,
                 temperature=0.5,
-                max_tokens=512  
+                max_tokens=512
             )
 
-            # Parse Hugging Face responses safely
             if hasattr(response, "generated_text"):
                 return response.generated_text
             if isinstance(response, dict):
