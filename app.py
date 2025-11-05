@@ -10,17 +10,21 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from huggingface_hub import InferenceClient
 from langchain_core.language_models import LLM
 
-# Environment Setup 
+# Environment Setup
 load_dotenv()
-HF_TOKEN = os.getenv("HUGGINGFACEHUB_API_TOKEN")
+HF_TOKEN = os.getenv("HUGGINGFACEHUB_API_TOKEN") or os.getenv("HF_TOKEN")
 
 st.set_page_config(page_title="RAG Chatbot", layout="wide")
-st.title("Universal RAG Chatbot")
+st.title("🤖 Universal RAG Chatbot")
 st.caption("Upload PDFs or text files → Build a knowledge base → Chat naturally with AI powered by Mistral 7B Instruct v0.2")
+
+if not HF_TOKEN:
+    st.error("⚠️ Hugging Face token not found. Please add it in Streamlit Secrets or your local .env file.")
+    st.stop()
 
 # Custom Hugging Face LLM Wrapper
 class HFInferenceLLM(LLM):
-    """LangChain-compatible wrapper for Mistral 7B using conversational endpoint."""
+    """LangChain-compatible wrapper for Hugging Face conversational models."""
     model_id: str
     token: str
     client: Any = None
@@ -31,22 +35,24 @@ class HFInferenceLLM(LLM):
             self,
             "client",
             InferenceClient(
+                model=model_id, 
                 token=token,
                 base_url="https://router.huggingface.co/hf-inference"
             )
         )
 
     def _call(self, prompt: str, stop=None, run_manager=None, **kwargs) -> str:
-        """Use chat_completion for models that support conversational tasks."""
+        """Use chat_completion for conversational models."""
         try:
             messages = [{"role": "user", "content": prompt}]
             response = self.client.chat_completion(
-                model=self.model_id,  
+                model=self.model_id,
                 messages=messages,
                 temperature=0.5,
                 max_tokens=512
             )
 
+            # Handle different response formats
             if hasattr(response, "generated_text"):
                 return response.generated_text
             if isinstance(response, dict):
@@ -61,14 +67,20 @@ class HFInferenceLLM(LLM):
                     return first["generated_text"]
                 return str(first)
             return str(response)
+
         except Exception as e:
-            raise RuntimeError(f"Chat completion failed: {e}")
+            st.error("⚠️ Model request failed. Please check your HF token or model availability.")
+            print("HFInferenceLLM Error:", e)
+            return "Model unavailable right now. Please try again later."
 
     @property
     def _llm_type(self) -> str:
         return "huggingface_inference"
 
-# File Upload Section 
+
+# ================================
+# 📂 File Upload Section
+# ================================
 uploaded_files = st.file_uploader(
     "📂 Upload one or more files",
     type=["pdf", "txt"],
@@ -87,36 +99,39 @@ if uploaded_files:
         loader = PyPDFLoader(path) if file.name.lower().endswith(".pdf") else TextLoader(path)
         docs.extend(loader.load())
 
-    # Text Splitting 
+    # Split text
     st.info("🔄 Splitting documents and generating embeddings...")
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
     chunks = splitter.split_documents(docs)
 
-    # Embeddings + Vector Store 
+    # Embeddings and Vector Store
     embedder = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
     db = FAISS.from_documents(chunks, embedder)
-    st.success("✅ Knowledge base built successfully!")
+    st.success("Knowledge base built successfully!")
 
-    # Initialize Mistral 7B LLM 
-    llm = HFInferenceLLM("mistralai/Mistral-7B-Instruct-v0.2", HF_TOKEN)
+    # Initialize LLM (with fallback)
+    try:
+        llm = HFInferenceLLM("mistralai/Mistral-7B-Instruct-v0.2", HF_TOKEN)
+    except Exception as e:
+        st.warning("⚠️ Mistral model unavailable, switching to Zephyr fallback.")
+        llm = HFInferenceLLM("HuggingFaceH4/zephyr-7b-beta", HF_TOKEN)
 
-    # Chat Section
+    # ================================
+    # 💬 Chat Section
+    # ================================
     st.subheader("💬 Chat with your documents")
 
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
-    # Optional: Clear chat history
     if st.button("🧹 Clear Chat History"):
         st.session_state.chat_history = []
         st.rerun()
 
-    # Render previous messages
     for role, content in st.session_state.chat_history:
         with st.chat_message("user" if role == "user" else "assistant"):
             st.markdown(content)
 
-    # Chat input
     if query := st.chat_input("Ask anything about your uploaded documents..."):
         st.session_state.chat_history.append(("user", query))
         with st.chat_message("user"):
